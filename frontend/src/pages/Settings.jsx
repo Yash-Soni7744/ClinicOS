@@ -44,7 +44,8 @@ export default function Settings({
     
     try {
       // Hit the patient-reply webhook trigger with a test pre-flight ping
-      const res = await fetch(`${n8nUrl}/webhook-${n8nWebhookMode === 'test' ? 'test' : ''}/patient-reply`, {
+      const webhookPath = `${n8nUrl}/${n8nWebhookMode === 'test' ? 'webhook-test' : 'webhook'}/patient-reply`;
+      const res = await fetch(webhookPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

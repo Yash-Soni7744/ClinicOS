@@ -31,7 +31,7 @@ export default function AIInbox({
     const cleanPhone = activePatient.phone.replace(/\s+/g, "");
     // Match the exact format expected by n8n's From.replace("whatsapp:+","")
     const formattedPhone = "whatsapp:" + cleanPhone;
-    const webhookPath = `${n8nUrl}/webhook-${n8nWebhookMode === 'test' ? 'test' : ''}/patient-reply`;
+    const webhookPath = `${n8nUrl}/${n8nWebhookMode === 'test' ? 'webhook-test' : 'webhook'}/patient-reply`;
     
     const logId = Date.now().toString();
     const newLog = {
