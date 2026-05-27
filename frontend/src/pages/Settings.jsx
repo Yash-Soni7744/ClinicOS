@@ -1,12 +1,29 @@
 import React, { useState } from 'react';
+import n8nWorkflows from '../all_workflows.json';
 
-export default function Settings({ settings, setSettings, triggerToast }) {
+export default function Settings({ 
+  settings, 
+  setSettings, 
+  triggerToast,
+  n8nEnabled,
+  setN8nEnabled,
+  n8nUrl,
+  setN8nUrl,
+  n8nWebhookMode,
+  setN8nWebhookMode
+}) {
   const [threshold, setThreshold] = useState(settings.aiConfidenceThreshold);
   const [keywords, setKeywords] = useState(settings.emergencyKeywords);
   const [startHour, setStartHour] = useState(settings.clinicHours.start);
   const [endHour, setEndHour] = useState(settings.clinicHours.end);
   const [drSharmaHours, setDrSharmaHours] = useState(settings.availability.drSharma);
   
+  // Local state for checking connection
+  const [isTestingConn, setIsTestingConn] = useState(false);
+
+  // Filter out archived workflows to match the active project dashboard (5 workflows)
+  const activeWorkflows = n8nWorkflows ? n8nWorkflows.filter(w => !w.isArchived) : [];
+
   // Integration statuses
   const [integrations, setIntegrations] = useState(settings.integrations);
 
@@ -18,6 +35,36 @@ export default function Settings({ settings, setSettings, triggerToast }) {
       triggerToast(`${name} integration connected successfully.`, 'success');
     } else {
       triggerToast(`${name} integration disconnected.`, 'error');
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingConn(true);
+    triggerToast("Pinging local n8n webhook...", "info");
+    
+    try {
+      // Hit the patient-reply webhook trigger with a test pre-flight ping
+      const res = await fetch(`${n8nUrl}/webhook-${n8nWebhookMode === 'test' ? 'test' : ''}/patient-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          body: {
+            From: "whatsapp:+91000000000",
+            Body: "ping-test"
+          }
+        })
+      });
+
+      if (res.status === 200 || res.status === 201) {
+        triggerToast("✓ n8n connection verified successfully!", "success");
+      } else {
+        triggerToast(`n8n responded with status ${res.status}. Bridge is active.`, "success");
+      }
+    } catch (e) {
+      console.error(e);
+      triggerToast("⚠️ Connection failed. Ensure n8n is running locally and CORS is configured.", "error");
+    } finally {
+      setIsTestingConn(false);
     }
   };
 
@@ -208,6 +255,155 @@ export default function Settings({ settings, setSettings, triggerToast }) {
           </div>
 
         </div>
+
+        {/* n8n Webhook Bridge & Active Workflows Board */}
+        <div style={{ marginTop: '40px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          
+          <div className="settings-card" style={{ maxWidth: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h3 className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-ai)' }}>
+                  🔌 n8n Webhook Automation Bridge
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', maxWidth: '750px' }}>
+                  Establish a local link to your running n8n engine. This forwards patient WhatsApp simulation events directly to your local workspace, activating Google Calendar checkups and LLM analysis in real time.
+                </p>
+              </div>
+
+              {/* Toggle switch */}
+              <div className="takeover-control" style={{ border: 'none', backgroundColor: 'var(--color-ai-light)', color: 'var(--color-ai)' }}>
+                <span>n8n Pipeline Connection</span>
+                <label className="switch">
+                  <input 
+                    type="checkbox" 
+                    checked={n8nEnabled} 
+                    onChange={() => {
+                      setN8nEnabled(!n8nEnabled);
+                      triggerToast(n8nEnabled ? "n8n automation bridge paused." : "n8n automation bridge active.", n8nEnabled ? "error" : "success");
+                    }}
+                  />
+                  <span className="slider" style={{ backgroundColor: '#93c5fd' }}></span>
+                </label>
+              </div>
+            </div>
+
+            {n8nEnabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px', borderTop: '1px solid var(--border-subtle)', paddingTop: '20px', marginTop: '10px' }}>
+                {/* Bridge Inputs */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="form-group">
+                    <label className="form-label">n8n Host Instance URL</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="e.g. http://localhost:5678" 
+                      value={n8nUrl}
+                      onChange={(e) => setN8nUrl(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">n8n Webhook Execution Target</label>
+                    <select 
+                      className="form-select"
+                      value={n8nWebhookMode}
+                      onChange={(e) => {
+                        setN8nWebhookMode(e.target.value);
+                        triggerToast(`Switched webhook environment to ${e.target.value === 'test' ? 'Test Canvas (webhook-test)' : 'Production (webhook)'}`, 'info');
+                      }}
+                    >
+                      <option value="test">Test Mode (webhook-test) — For running active canvas tests</option>
+                      <option value="production">Production Mode (webhook) — Runs only if workflow is set to Active</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      className="alert-btn primary"
+                      style={{ backgroundColor: 'var(--color-ai)' }}
+                      onClick={handleTestConnection}
+                      disabled={isTestingConn}
+                    >
+                      {isTestingConn ? "Pinging..." : "Test n8n Connection"}
+                    </button>
+                  </div>
+
+                  {/* CORS Troubleshooting instructions */}
+                  <div style={{ 
+                    marginTop: '12px',
+                    padding: '16px',
+                    backgroundColor: '#fafbfc',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-subtle)',
+                    fontSize: '12.5px',
+                    lineHeight: 1.5
+                  }}>
+                    <strong style={{ color: 'var(--color-emergency)', display: 'block', marginBottom: '4px' }}>⚠️ Local CORS Troubleshooting</strong>
+                    If testing the connection triggers a browser block, make sure to execute your local n8n command with CORS enabled or set n8n environment variables:
+                    <code style={{ 
+                      display: 'block', 
+                      backgroundColor: '#f1f5f9', 
+                      padding: '8px', 
+                      borderRadius: '6px', 
+                      marginTop: '8px', 
+                      fontSize: '11px',
+                      color: '#0f172a',
+                      fontFamily: 'monospace'
+                    }}>
+                      $env:N8N_ENFORCE_SETTINGS_FILE_FOR_EVAL="true"<br />
+                      npx n8n start --cors
+                    </code>
+                  </div>
+                </div>
+
+                {/* Workflows List */}
+                <div>
+                  <h4 className="form-label" style={{ marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Active Workflows List ({activeWorkflows.length})
+                  </h4>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {activeWorkflows.map((w) => (
+                      <div 
+                        key={w.id} 
+                        style={{ 
+                          padding: '12px 16px', 
+                          borderRadius: '12px', 
+                          border: '1px solid var(--border-subtle)',
+                          backgroundColor: '#fafbfc',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{w.name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>ID: {w.id} • {w.nodes.length} Nodes</div>
+                        </div>
+
+                        <span 
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: w.active ? 'var(--color-confirmed-light)' : '#f1f5f9',
+                            color: w.active ? 'var(--color-confirmed)' : 'var(--text-secondary)'
+                          }}
+                        >
+                          {w.active ? '● Published' : '○ Inactive'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
       </form>
     </div>
   );

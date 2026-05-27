@@ -27,6 +27,11 @@ export default function App() {
   const [selectedClinic, setSelectedClinic] = useState('Dr. Sharma\'s Clinic, Faridabad');
   const [selectedPatientId, setSelectedPatientId] = useState('p1'); // default to Ramesh Kumar
   
+  // n8n Webhook Integration States
+  const [n8nEnabled, setN8nEnabled] = useState(true);
+  const [n8nUrl, setN8nUrl] = useState('http://localhost:5678');
+  const [n8nWebhookMode, setN8nWebhookMode] = useState('test'); // 'test' or 'production'
+  
   // Interactive UI indicators
   const [toasts, setToasts] = useState([]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -183,6 +188,9 @@ export default function App() {
             selectedPatientId={selectedPatientId}
             setSelectedPatientId={setSelectedPatientId}
             triggerToast={triggerToast}
+            n8nEnabled={n8nEnabled}
+            n8nUrl={n8nUrl}
+            n8nWebhookMode={n8nWebhookMode}
           />
         );
       case 'Alerts & Escalations':
@@ -203,6 +211,12 @@ export default function App() {
             settings={settings}
             setSettings={setSettings}
             triggerToast={triggerToast}
+            n8nEnabled={n8nEnabled}
+            setN8nEnabled={setN8nEnabled}
+            n8nUrl={n8nUrl}
+            setN8nUrl={setN8nUrl}
+            n8nWebhookMode={n8nWebhookMode}
+            setN8nWebhookMode={setN8nWebhookMode}
           />
         );
       default:

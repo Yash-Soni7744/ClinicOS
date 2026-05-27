@@ -1,8 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-export default function AIInbox({ patients, setPatients, selectedPatientId, setSelectedPatientId, triggerToast }) {
+export default function AIInbox({ 
+  patients, 
+  setPatients, 
+  selectedPatientId, 
+  setSelectedPatientId, 
+  triggerToast,
+  n8nEnabled,
+  n8nUrl,
+  n8nWebhookMode
+}) {
   const [manualMessage, setManualMessage] = useState('');
   const chatBottomRef = useRef(null);
+
+  // Connection logger state
+  const [n8nLogs, setN8nLogs] = useState([]);
+  const [showLogs, setShowLogs] = useState(true);
 
   const activePatient = patients.find(p => p.id === selectedPatientId) || patients[0];
 
@@ -12,6 +25,182 @@ export default function AIInbox({ patients, setPatients, selectedPatientId, setS
       chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [selectedPatientId, activePatient?.conversations?.length]);
+
+  // Dispatch HTTP request to local n8n Webhook
+  const triggerN8nWebhook = async (messageText) => {
+    const cleanPhone = activePatient.phone.replace(/\s+/g, "");
+    // Match the exact format expected by n8n's From.replace("whatsapp:+","")
+    const formattedPhone = "whatsapp:" + cleanPhone;
+    const webhookPath = `${n8nUrl}/webhook-${n8nWebhookMode === 'test' ? 'test' : ''}/patient-reply`;
+    
+    const logId = Date.now().toString();
+    const newLog = {
+      id: logId,
+      time: new Date().toLocaleTimeString(),
+      url: webhookPath,
+      method: 'POST',
+      payload: { body: { From: formattedPhone, Body: messageText } },
+      status: 'pending',
+      response: null
+    };
+
+    setN8nLogs(prev => [newLog, ...prev]);
+
+    try {
+      const res = await fetch(webhookPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          body: {
+            From: formattedPhone,
+            Body: messageText
+          }
+        })
+      });
+
+      const responseText = await res.text();
+      let responseData = null;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (err) {
+        responseData = responseText;
+      }
+
+      setN8nLogs(prev => prev.map(log => 
+        log.id === logId 
+          ? { ...log, status: res.status, response: responseData } 
+          : log
+      ));
+
+      if (res.status === 200 || res.status === 201) {
+        triggerToast("n8n pipeline executed successfully!", "success");
+        return { success: true, data: responseData };
+      } else {
+        triggerToast(`n8n webhook triggered with status ${res.status}`, "info");
+        return { success: true, data: responseData };
+      }
+    } catch (err) {
+      console.error("n8n Bridge error:", err);
+      setN8nLogs(prev => prev.map(log => 
+        log.id === logId 
+          ? { ...log, status: 'Blocked / Offline', response: err.message } 
+          : log
+      ));
+      triggerToast("n8n bridge offline or browser CORS block.", "error");
+      return { success: false, error: err };
+    }
+  };
+
+  // Simulate patient WhatsApp message (fires n8n)
+  const handleSimulatePatient = async () => {
+    if (!manualMessage.trim()) return;
+    
+    const text = manualMessage;
+    setManualMessage('');
+    
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    
+    // 1. Add patient bubble locally
+    setPatients(prev => prev.map(p => {
+      if (p.id === activePatient.id) {
+        return {
+          ...p,
+          conversations: [
+            ...p.conversations,
+            { sender: 'patient', text: text, time: timeStr }
+          ]
+        };
+      }
+      return p;
+    }));
+
+    // 2. Add AI Triage Processing indicator
+    const typingId = 'typing-' + Date.now();
+    setPatients(prev => prev.map(p => {
+      if (p.id === activePatient.id) {
+        return {
+          ...p,
+          conversations: [
+            ...p.conversations,
+            { id: typingId, sender: 'system', text: 'AI pre-consultation triage processing via n8n...' }
+          ]
+        };
+      }
+      return p;
+    }));
+
+    let aiResponseText = "";
+    let systemLog = "";
+    
+    // 3. Fire local n8n Webhook
+    if (n8nEnabled) {
+      const result = await triggerN8nWebhook(text);
+      
+      // Clean up triage indicator
+      setPatients(prev => prev.map(p => {
+        if (p.id === activePatient.id) {
+          return { ...p, conversations: p.conversations.filter(c => c.id !== typingId) };
+        }
+        return p;
+      }));
+
+      if (result && result.success && result.data) {
+        const data = result.data;
+        // Parse n8n response if configured for "lastNode"
+        if (data.reply) {
+          aiResponseText = data.reply;
+        } else if (data.final_message) {
+          aiResponseText = data.final_message;
+        } else if (data.message && data.message !== "Workflow started") {
+          aiResponseText = data.message;
+        } else {
+          systemLog = "n8n automation started in background (syncing calendar & sheets).";
+        }
+      }
+    } else {
+      // Mock typing timeout
+      await new Promise(r => setTimeout(r, 1200));
+      setPatients(prev => prev.map(p => {
+        if (p.id === activePatient.id) {
+          return { ...p, conversations: p.conversations.filter(c => c.id !== typingId) };
+        }
+        return p;
+      }));
+    }
+
+    // 4. Generate fallback text if n8n returned immediate start without text
+    if (!aiResponseText) {
+      const lower = text.toLowerCase();
+      if (lower.includes('chest pain') || lower.includes('breathing')) {
+        aiResponseText = "Ramesh ji, please rest in a comfortable position immediately. Since you report chest pain and breathing difficulty, I am escalating this to Dr. Sharma's urgent desk right now. A clinic assistant will call you immediately.";
+      } else if (lower.includes('fever') || lower.includes('bukhar') || lower.includes('cough')) {
+        aiResponseText = "Fever and cold registered. Dr. Sharma has a slot open today at 11:30 AM. Shall I hold this slot for you? Please reply YES to confirm.";
+      } else if (lower.includes('yes') || lower.includes('confirm')) {
+        aiResponseText = "Perfect, booked and confirmed. Reminder sent to your calendar.";
+      } else {
+        aiResponseText = "Namaste. I have received your request. Our automated clinical desk is reviewing it.";
+      }
+    }
+
+    // 5. Append AI reply bubble
+    setPatients(prev => prev.map(p => {
+      if (p.id === activePatient.id) {
+        const conversations = [
+          ...p.conversations,
+          { sender: 'ai', text: aiResponseText, time: timeStr }
+        ];
+        if (systemLog) {
+          conversations.push({ sender: 'system', text: systemLog, time: timeStr });
+        }
+        return {
+          ...p,
+          conversations
+        };
+      }
+      return p;
+    }));
+  };
 
   // Handle staff takeover toggle
   const handleTakeoverToggle = (patientId) => {
@@ -70,6 +259,18 @@ export default function AIInbox({ patients, setPatients, selectedPatientId, setS
   const handleAIAction = (actionType) => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // Trigger n8n webhook triggers if integration is enabled
+    if (n8nEnabled) {
+      let bodyText = "";
+      if (actionType === 'book') bodyText = "YES";
+      else if (actionType === 'reschedule') bodyText = "reschedule";
+      else if (actionType === 'escalate') bodyText = "emergency";
+      
+      if (bodyText) {
+        triggerN8nWebhook(bodyText);
+      }
+    }
 
     if (actionType === 'book') {
       // Confirm the pending appointment
@@ -247,6 +448,68 @@ export default function AIInbox({ patients, setPatients, selectedPatientId, setS
               <div ref={chatBottomRef} />
             </div>
 
+            {/* n8n Webhook Console Logs */}
+            {n8nEnabled && showLogs && (
+              <div style={{
+                backgroundColor: '#0f172a',
+                color: '#38bdf8',
+                fontFamily: 'monospace',
+                fontSize: '11px',
+                padding: '12px 18px',
+                borderTop: '1px solid #1e293b',
+                maxHeight: '130px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', borderBottom: '1px solid #1e293b', paddingBottom: '4px', marginBottom: '2px', fontWeight: 600 }}>
+                  <span>🔌 n8n PIPELINE LOGGER</span>
+                  <button 
+                    onClick={() => setShowLogs(false)} 
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '10px' }}
+                  >
+                    Hide Logs
+                  </button>
+                </div>
+                {n8nLogs.length === 0 ? (
+                  <span style={{ color: '#64748b' }}>No n8n requests dispatched yet. Send a simulated message to trigger webhook.</span>
+                ) : (
+                  n8nLogs.map((log) => (
+                    <div key={log.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>
+                          <span style={{ color: '#34d399' }}>{log.time}</span> • {log.method} {log.url}
+                        </span>
+                        <span style={{ color: log.status === 'pending' ? '#fbbf24' : log.status === 200 || log.status === 201 ? '#34d399' : '#f87171' }}>
+                          [{log.status}]
+                        </span>
+                      </div>
+                      <div style={{ color: '#cbd5e1', paddingLeft: '12px' }}>
+                        Request: {JSON.stringify(log.payload)}
+                      </div>
+                      {log.response && (
+                        <div style={{ color: '#cbd5e1', paddingLeft: '12px' }}>
+                          Response: {JSON.stringify(log.response)}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {n8nEnabled && !showLogs && (
+              <div style={{ textAlign: 'right', padding: '4px 20px', backgroundColor: '#f1f5f9', borderTop: '1px solid var(--border-subtle)' }}>
+                <button 
+                  onClick={() => setShowLogs(true)} 
+                  style={{ background: 'none', border: 'none', color: 'var(--color-ai)', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}
+                >
+                  🔌 Show n8n Pipeline Logs
+                </button>
+              </div>
+            )}
+
             {/* AI Suggested Actions Bar (Only if AI is active / pending) */}
             {activePatient.status !== 'Staff Takeover' && (
               <div className="inbox-suggestions-bar">
@@ -307,7 +570,16 @@ export default function AIInbox({ patients, setPatients, selectedPatientId, setS
                 className="alert-btn primary"
                 style={{ borderRadius: '12px', padding: '10px 20px', height: '42px', flexShrink: 0 }}
               >
-                Send Message
+                Send as Staff
+              </button>
+
+              <button 
+                type="button"
+                className="alert-btn secondary"
+                style={{ borderRadius: '12px', padding: '10px 20px', height: '42px', flexShrink: 0, color: 'var(--color-ai)', borderColor: 'var(--color-ai)' }}
+                onClick={handleSimulatePatient}
+              >
+                Simulate Patient
               </button>
             </form>
           </div>
