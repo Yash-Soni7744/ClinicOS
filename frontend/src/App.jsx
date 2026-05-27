@@ -30,7 +30,7 @@ export default function App() {
   // n8n Webhook Integration States
   const [n8nEnabled, setN8nEnabled] = useState(true);
   const [n8nUrl, setN8nUrl] = useState('http://localhost:5678');
-  const [n8nWebhookMode, setN8nWebhookMode] = useState('test'); // 'test' or 'production'
+  const [n8nWebhookMode, setN8nWebhookMode] = useState('production'); // default to production for always-on demos
   
   // Interactive UI indicators
   const [toasts, setToasts] = useState([]);
