@@ -1,0 +1,130 @@
+.live-feed-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.feed-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.pulse-icon {
+  animation: pulseGlow 2s infinite;
+  border-radius: 50%;
+}
+
+.live-badge {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  padding: 4px 10px;
+  border-radius: var(--radius-xl);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background-color: var(--danger);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--danger);
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 8px;
+  flex: 1;
+}
+
+.feed-item {
+  display: flex;
+  gap: 16px;
+  opacity: 0;
+  animation: slideInRight 0.5s ease-out forwards;
+}
+
+.feed-icon-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 24px;
+}
+
+.feed-icon-wrapper svg {
+  background: var(--bg-surface);
+  padding: 4px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--bg-surface-elevated);
+  z-index: 2;
+}
+
+.feed-line {
+  width: 2px;
+  flex: 1;
+  background: var(--bg-surface-elevated);
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.feed-content {
+  flex: 1;
+  padding-bottom: 24px;
+}
+
+.feed-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.feed-agent {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.feed-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.feed-action {
+  font-size: 0.95rem;
+  margin: 0 0 4px 0;
+  color: var(--text-primary);
+}
+
+.feed-detail {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
